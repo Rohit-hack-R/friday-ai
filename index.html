@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Assistant</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 800px;
+            max-width: 100%;
+        }
+
+        .chat-display {
+            background-color: #2d2d2d;
+            color: #ffffff;
+            height: 500px;
+            padding: 20px;
+            overflow-y: auto;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            background-color: #2d2d2d;
+            border: none;
+            color: #ffffff;
+            font-size: 14px;
+            border-radius: 5px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #00ff9d;
+            border: none;
+            color: #000000;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .voice-button {
+            font-size: 18px;
+        }
+
+        .status-label {
+            color: #00ff9d;
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .user-message {
+            background-color: #404040;
+        }
+
+        .ai-message {
+            background-color: #1a1a1a;
+        }
+
+        #loginContainer, #registerContainer {
+            background-color: #2d2d2d;
+            padding: 30px;
+            border-radius: 10px;
+            width: 400px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            color: #ffffff;
+            margin-bottom: 5px;
+        }
+
+        .error-message {
+            color: #ff4d4d;
+            margin-top: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Login Container -->
+        <div id="loginContainer">
+            <h1 style="color: #00ff9d; text-align: center;">Friday AI</h1>
+            <div class="form-group">
+                <label>Username:</label>
+                <input type="text" id="loginUsername" class="form-control">
+            </div>
+            <div class="form-group">
+                <label>Password:</label>
+                <input type="password" id="loginPassword" class="form-control">
+            </div>
+            <button onclick="login()">Login</button>
+            <button onclick="showRegister()" style="background-color: #2d2d2d; color: #ffffff;">Register New User</button>
+            <div id="loginError" class="error-message"></div>
+        </div>
+
+        <!-- Register Container -->
+        <div id="registerContainer" style="display: none;">
+            <h1 style="color: #00ff9d; text-align: center;">Register</h1>
+            <div class="form-group">
+                <label>New Username:</label>
+                <input type="text" id="regUsername" class="form-control">
+            </div>
+            <div class="form-group">
+                <label>Password:</label>
+                <input type="password" id="regPassword" class="form-control">
+            </div>
+            <div class="form-group">
+                <label>Confirm Password:</label>
+                <input type="password" id="regConfirm" class="form-control">
+            </div>
+            <button onclick="register()">Register</button>
+            <button onclick="showLogin()" style="background-color: #2d2d2d; color: #ffffff;">Back to Login</button>
+            <div id="registerError" class="error-message"></div>
+        </div>
+
+        <!-- Chat Container -->
+        <div id="chatContainer" style="display: none;">
+            <div class="chat-display" id="chatDisplay"></div>
+            <div class="input-container">
+                <input type="text" id="userInput" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()">Send</button>
+                <button class="voice-button" id="voiceButton" onclick="toggleVoice()">🎤</button>
+            </div>
+            <div class="status-label" id="statusLabel">Ready</div>
+        </div>
+    </div>
+
+    <script>
+        class AIAssistant {
+            constructor() {
+                this.API_KEY = 'AIzaSyC_8af8KAPjefBsJL6IvuVUPjOY38NQRaI';
+                this.chatDisplay = document.getElementById('chatDisplay');
+                this.userInput = document.getElementById('userInput');
+                this.statusLabel = document.getElementById('statusLabel');
+                this.voiceButton = document.getElementById('voiceButton');
+                this.isListening = false;
+
+                // Initialize speech recognition
+                if ('webkitSpeechRecognition' in window) {
+                    this.recognition = new webkitSpeechRecognition();
+                    this.recognition.continuous = false;
+                    this.recognition.interimResults = false;
+
+                    this.recognition.onresult = (event) => {
+                        const text = event.results[0][0].transcript;
+                        this.userInput.value = text;
+                        this.sendMessage();
+                    };
+
+                    this.recognition.onerror = (event) => {
+                        this.statusLabel.textContent = `Error: ${event.error}`;
+                        this.toggleVoice();
+                    };
+                }
+
+                // Initialize commands registry
+                this.commands = {
+                    'open': this.openWebsite,
+                    'search': this.searchWeb,
+                    'play': this.playMedia,
+                    'email': this.composeEmail,
+                    'map': this.openMaps,
+                    'translate': this.translate,
+                    'calculate': this.calculate,
+                    'weather': this.getWeather,
+                    'reminder': this.setReminder
+                };
+            }
+
+            async sendMessage() {
+                const message = this.userInput.value.trim();
+                if (!message) return;
+
+                // Clear input
+                this.userInput.value = '';
+
+                // Add user message to chat
+                this.addToChat('You', message);
+
+                // Check for commands first
+                const isCommand = await this.handleCommand(message);
+                if (!isCommand) {
+                    // If not a command, proceed with AI response
+                    this.statusLabel.textContent = 'AI is thinking...';
+                    try {
+                        const response = await this.getAIResponse(message);
+                        this.addToChat('AI', response);
+                        this.speak(response);
+                    } catch (error) {
+                        this.addToChat('System', `Error: ${error.message}`);
+                    }
+                }
+                this.statusLabel.textContent = 'Ready';
+            }
+
+            async getAIResponse(message) {
+                // Replace this with actual API call to Gemini
+                // This is a placeholder implementation
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${this.API_KEY}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [{
+                                text: message
+                            }]
+                        }]
+                    })
+                });
+
+                const data = await response.json();
+                return data.candidates[0].content.parts[0].text;
+            }
+
+            addToChat(sender, message) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${sender.toLowerCase()}-message`;
+                messageDiv.textContent = `${sender}: ${message}`;
+                this.chatDisplay.appendChild(messageDiv);
+                this.chatDisplay.scrollTop = this.chatDisplay.scrollHeight;
+            }
+
+            speak(text) {
+                if ('speechSynthesis' in window) {
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    window.speechSynthesis.speak(utterance);
+                }
+            }
+
+            toggleVoice() {
+                if (!this.recognition) {
+                    this.statusLabel.textContent = 'Speech recognition not supported';
+                    return;
+                }
+
+                if (this.isListening) {
+                    this.recognition.stop();
+                    this.voiceButton.style.backgroundColor = '#00ff9d';
+                    this.statusLabel.textContent = 'Ready';
+                } else {
+                    this.recognition.start();
+                    this.voiceButton.style.backgroundColor = '#ff4d4d';
+                    this.statusLabel.textContent = 'Listening...';
+                }
+                this.isListening = !this.isListening;
+            }
+
+            // Command handler
+            async handleCommand(message) {
+                const command = this.parseCommand(message.toLowerCase());
+                if (command) {
+                    try {
+                        await this.executeCommand(command);
+                        return true;
+                    } catch (error) {
+                        this.addToChat('System', `Error executing command: ${error.message}`);
+                        return false;
+                    }
+                }
+                return false;
+            }
+
+            parseCommand(message) {
+                const commandPatterns = {
+                    open: /^open\s+(.+)$/i,
+                    search: /^search\s+(.+)$/i,
+                    play: /^play\s+(.+)$/i,
+                    email: /^email\s+(\S+)\s+subject:\s*(.+?)\s+body:\s*(.+)$/i,
+                    map: /^map\s+(.+)$/i,
+                    translate: /^translate\s+"(.+)"\s+to\s+(\w+)$/i,
+                    calculate: /^calculate\s+(.+)$/i,
+                    weather: /^weather\s+(.+)$/i,
+                    reminder: /^remind\s+(.+)\s+in\s+(\d+)\s+(minutes?|hours?|days?)$/i
+                };
+
+                for (const [command, pattern] of Object.entries(commandPatterns)) {
+                    const match = message.match(pattern);
+                    if (match) {
+                        return {
+                            type: command,
+                            params: match.slice(1)
+                        };
+                    }
+                }
+                return null;
+            }
+
+            async executeCommand(command) {
+                if (this.commands[command.type]) {
+                    await this.commands[command.type].call(this, ...command.params);
+                }
+            }
+
+            // Command implementations
+            async openWebsite(url) {
+                if (!url.startsWith('http')) {
+                    url = 'https://' + url;
+                }
+                window.open(url, '_blank');
+                this.addToChat('System', `Opening website: ${url}`);
+            }
+
+            async searchWeb(query) {
+                const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+                window.open(searchUrl, '_blank');
+                this.addToChat('System', `Searching for: ${query}`);
+            }
+
+            async playMedia(query) {
+                const youtubeUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+                window.open(youtubeUrl, '_blank');
+                this.addToChat('System', `Searching YouTube for: ${query}`);
+            }
+
+            async composeEmail(to, subject, body) {
+                const mailtoUrl = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                window.location.href = mailtoUrl;
+                this.addToChat('System', `Composing email to: ${to}`);
+            }
+
+            async openMaps(location) {
+                const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+                window.open(mapsUrl, '_blank');
+                this.addToChat('System', `Opening maps for: ${location}`);
+            }
+
+            async translate(text, targetLang) {
+                const translateUrl = `https://translate.google.com/?text=${encodeURIComponent(text)}&tl=${targetLang}`;
+                window.open(translateUrl, '_blank');
+                this.addToChat('System', `Translating to ${targetLang}: ${text}`);
+            }
+
+            async calculate(expression) {
+                try {
+                    // Use Function instead of eval for safer evaluation
+                    const result = new Function(`return ${expression}`)();
+                    this.addToChat('System', `${expression} = ${result}`);
+                } catch (error) {
+                    throw new Error('Invalid calculation expression');
+                }
+            }
+
+            async getWeather(location) {
+                const weatherUrl = `https://www.weather.com/weather/today/l/${encodeURIComponent(location)}`;
+                window.open(weatherUrl, '_blank');
+                this.addToChat('System', `Checking weather for: ${location}`);
+            }
+
+            async setReminder(text, time, unit) {
+                const milliseconds = {
+                    minute: 60000,
+                    hour: 3600000,
+                    day: 86400000
+                };
+
+                const baseUnit = unit.toLowerCase().replace(/s$/, '');
+                const delay = time * milliseconds[baseUnit];
+
+                setTimeout(() => {
+                    this.addToChat('System', `Reminder: ${text}`);
+                    // Show notification if supported
+                    if ('Notification' in window && Notification.permission === 'granted') {
+                        new Notification('Reminder', { body: text });
+                    }
+                }, delay);
+
+                this.addToChat('System', `Reminder set for ${time} ${unit}: ${text}`);
+            }
+        }
+
+        // Login System
+        class LoginSystem {
+            constructor() {
+                this.users = this.loadUsers();
+            }
+
+            loadUsers() {
+                const users = localStorage.getItem('users');
+                return users ? JSON.parse(users) : {};
+            }
+
+            saveUsers() {
+                localStorage.setItem('users', JSON.stringify(this.users));
+            }
+
+            login(username, password) {
+                if (!username || !password) {
+                    throw new Error('Please fill in all fields');
+                }
+
+                const user = this.users[username];
+                if (!user || user.password !== this.hashPassword(password)) {
+                    throw new Error('Invalid username or password');
+                }
+
+                return true;
+            }
+
+            register(username, password, confirm) {
+                if (!username || !password || !confirm) {
+                    throw new Error('Please fill in all fields');
+                }
+
+                if (password !== confirm) {
+                    throw new Error('Passwords do not match');
+                }
+
+                if (this.users[username]) {
+                    throw new Error('Username already exists');
+                }
+
+                this.users[username] = {
+                    password: this.hashPassword(password),
+                    created_at: new Date().toISOString()
+                };
+
+                this.saveUsers();
+                return true;
+            }
+
+            hashPassword(password) {
+                // This is a simple hash function for demonstration
+                // In production, use a proper cryptographic hash function
+                return btoa(password);
+            }
+        }
+
+        // Global instances
+        let assistant = null;
+        const loginSystem = new LoginSystem();
+
+        // UI Functions
+        function showLogin() {
+            document.getElementById('registerContainer').style.display = 'none';
+            document.getElementById('loginContainer').style.display = 'block';
+            document.getElementById('chatContainer').style.display = 'none';
+            document.getElementById('loginError').textContent = '';
+        }
+
+        function showRegister() {
+            document.getElementById('loginContainer').style.display = 'none';
+            document.getElementById('registerContainer').style.display = 'block';
+            document.getElementById('chatContainer').style.display = 'none';
+            document.getElementById('registerError').textContent = '';
+        }
+
+        function showChat() {
+            document.getElementById('loginContainer').style.display = 'none';
+            document.getElementById('registerContainer').style.display = 'none';
+            document.getElementById('chatContainer').style.display = 'block';
+            if (!assistant) {
+                assistant = new AIAssistant();
+            }
+        }
+
+        function login() {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+
+            try {
+                if (loginSystem.login(username, password)) {
+                    showChat();
+                }
+            } catch (error) {
+                document.getElementById('loginError').textContent = error.message;
+            }
+        }
+
+        function register() {
+            const username = document.getElementById('regUsername').value;
+            const password = document.getElementById('regPassword').value;
+            const confirm = document.getElementById('regConfirm').value;
+
+            try {
+                if (loginSystem.register(username, password, confirm)) {
+                    alert('Registration successful! Please login.');
+                    showLogin();
+                }
+            } catch (error) {
+                document.getElementById('registerError').textContent = error.message;
+            }
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                assistant.sendMessage();
+            }
+        }
+
+        function sendMessage() {
+            assistant.sendMessage();
+        }
+
+        function toggleVoice() {
+            assistant.toggleVoice();
+        }
+
+        // Request notification permission when initializing
+        if ('Notification' in window) {
+            Notification.requestPermission();
+        }
+    </script>
+</body>
+</html>
